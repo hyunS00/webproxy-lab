@@ -22,7 +22,7 @@ int main(int argc, char **argv)
         Getnameinfo((SA *)&clientaddr, clientlen, client_hostname, MAXLINE, client_port, MAXLINE, 0);
         printf("Connected to (%s : %s)\n", client_hostname, client_port);
         echo(connfd);
-        printf("colse to connfd:%d\n",connfd);
+        printf("Close to connfd:%d\n",connfd);
         Close(connfd);
     }
     exit(0);   
