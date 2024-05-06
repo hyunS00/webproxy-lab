@@ -2,6 +2,12 @@
 
 void echo(int connfd);
 
+void sigchld_handler(int sig){
+    while (waitpid(-1, 0, WNOHANG) > 0)
+        ;
+    return;
+}
+
 int main(int argc, char **argv)
 {
     int listenfd, connfd;
@@ -21,11 +27,15 @@ int main(int argc, char **argv)
         connfd = Accept(listenfd, (SA *)&clientaddr, &clientlen);
         Getnameinfo((SA *)&clientaddr, clientlen, client_hostname, MAXLINE, client_port, MAXLINE, 0);
         printf("Connected to (%s : %s)\n", client_hostname, client_port);
-        echo(connfd);
-        printf("Close to connfd:%d\n",connfd);
+        if(Fork() == 0){
+            Close(listenfd);
+            echo(connfd);
+            printf("close to connfd:%d\n",connfd);
+            Close(connfd);
+            exit(0);
+        }
         Close(connfd);
     }
-    exit(0);   
 }
 
 void echo(int connfd)
