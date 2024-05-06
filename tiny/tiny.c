@@ -9,13 +9,14 @@
 #include "csapp.h"
 
 void doit(int fd);
-void read_requesthdrs(rio_t *rp);
+void read_requesthdrs(rio_t *rp, char * head);
 int parse_uri(char *uri, char *filename, char *cgiargs);
 void serve_static(int fd, char *filename, int filesize);
 void get_filetype(char *filename, char *filetype);
 void serve_dynamic(int fd, char *filename, char *cgiargs);
 void clienterror(int fd, char *cause, char *errnum, char *shortmsg,
                  char *longmsg);
+void serve_head(int fd, rio_t *rp, char *head);
 
 int main(int argc, char **argv) {
   int listenfd, connfd;
@@ -46,7 +47,7 @@ void doit(int fd){
   int is_static;
   struct stat sbuf;
   char buf[MAXLINE], method[MAXLINE], uri[MAXLINE], version[MAXLINE];
-  char filename[MAXLINE], cgiargs[MAXLINE];
+  char filename[MAXLINE], cgiargs[MAXLINE], head[MAXLINE];
   rio_t rio;
 
   Rio_readinitb(&rio, fd);
@@ -54,11 +55,18 @@ void doit(int fd){
   printf("Request headers:\n");
   printf("%s",buf);
   sscanf(buf, "%s %s %s", method, uri, version);
-  if(strcasecmp(method, "GET")){
+
+  if(strcasecmp(method, "GET") && strcasecmp(method,"HEAD")){
     clienterror(fd, method, "501", "Not implemented", "Tiny does not implement this method");
     return;
   }
-  read_requesthdrs(&rio);
+  
+  read_requesthdrs(&rio, head);
+
+  if(!strcasecmp(method,"HEAD")){
+    serve_head(fd, head, head);
+    return;
+  }
 
   is_static = parse_uri(uri, filename, cgiargs);
   if(stat(filename, &sbuf) < 0){
@@ -100,21 +108,22 @@ void clienterror(int fd, char *cause, char *errnum, char *shormsg, char *longmsg
   Rio_writen(fd, body, strlen(body));
 }
 
-void read_requesthdrs(rio_t *rp){
+void read_requesthdrs(rio_t *rp, char *head){
   char buf[MAXLINE];
 
-  Rio_readlineb(rp, buf, MAXLINE);
+  // Rio_readlineb(rp, buf, MAXLINE);
+  strcpy(head,"");
   while (strcmp(buf, "\r\n"))
   {
     Rio_readlineb(rp, buf, MAXLINE);
     printf("%s", buf);
+    strcat(head,buf);
   }
   return;
 }
 
 int parse_uri(char *uri, char *filename, char *cgiargs) {
   char *ptr;
-  printf("uri:%s file:%s cgi:%s",uri, filename, cgiargs);
   if(!strstr(uri, "cgi-bin")) {
     strcpy(cgiargs, "");
     strcpy(filename, ".");
@@ -148,14 +157,15 @@ void serve_static(int fd, char *filename, int filesize){
   sprintf(buf, "%sConnection: close\r\n", buf);
   sprintf(buf, "%sContent-type: %s\r\n\r\n", buf, filetype);
   Rio_writen(fd, buf, strlen(buf));
-  printf("Respinse headers:\n");
+  printf("Response headers:\n");
   printf("%s", buf);
 
   srcfd = Open(filename, O_RDONLY, 0);
-  srcp = Mmap(0, filesize, PROT_READ, MAP_PRIVATE, srcfd, 0);
+  srcp = malloc(filesize);
+  Rio_readn(srcfd, srcp, filesize);
   Close(srcfd);
   Rio_writen(fd, srcp, filesize);
-  Munmap(srcp, filesize);
+  free(srcp);
 }
 
 void get_filetype(char *filename, char *filetype){
@@ -167,6 +177,8 @@ void get_filetype(char *filename, char *filetype){
     strcpy(filetype, "image/png");
   else if(strstr(filename, ".jpg"))
     strcpy(filetype, "image/jpg");
+  else if (strstr(filename, ".mp4"))
+    strcpy(filetype, "video/mp4");
   else
     strcpy(filetype, "text/plain");
 }
@@ -185,4 +197,8 @@ void serve_dynamic (int fd, char *filename, char *cgiargs){
     Execve(filename, emptylist, environ);
   }
   Wait(NULL);
+}
+
+void serve_head(int fd, rio_t *rp, char *head){
+  Rio_writen(fd, head, (int)strlen(head));
 }
